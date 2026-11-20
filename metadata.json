@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix ZOMBIE SURVIVAL: LAST STAND",
+  "description": "Game 3D Third-Person Zombie Survival menggunakan Three.js dan WebGL untuk demonstrasi Panen Karya SMK RPL.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

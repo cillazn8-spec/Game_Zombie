@@ -1,0 +1,15 @@
+{
+  "appId": "com.zombiesurvival.laststand",
+  "appName": "Zombie Survival 3D",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#07090d",
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  }
+}

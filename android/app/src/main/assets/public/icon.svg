@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="65%">
+      <stop offset="0%" stop-color="#162238" />
+      <stop offset="62%" stop-color="#0b101b" />
+      <stop offset="100%" stop-color="#05070c" />
+    </radialGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="55%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#dc2626" />
+    </linearGradient>
+    <linearGradient id="cyanGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0ea5e9" />
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="96" fill="url(#bg)" />
+  <rect x="20" y="20" width="472" height="472" rx="80" fill="none" stroke="url(#accent)" stroke-width="10" stroke-opacity="0.85" />
+
+  <!-- Tactical Crosshair Ring -->
+  <circle cx="256" cy="256" r="168" fill="none" stroke="#38bdf8" stroke-width="8" stroke-opacity="0.35" stroke-dasharray="28 16" />
+  <circle cx="256" cy="256" r="128" fill="#090e18" stroke="url(#accent)" stroke-width="10" />
+
+  <!-- Crosshair Ticks -->
+  <line x1="256" y1="54" x2="256" y2="112" stroke="#f59e0b" stroke-width="14" stroke-linecap="round" />
+  <line x1="256" y1="400" x2="256" y2="458" stroke="#f59e0b" stroke-width="14" stroke-linecap="round" />
+  <line x1="54" y1="256" x2="112" y2="256" stroke="#f59e0b" stroke-width="14" stroke-linecap="round" />
+  <line x1="400" y1="256" x2="458" y2="256" stroke="#f59e0b" stroke-width="14" stroke-linecap="round" />
+
+  <!-- Tactical Shield Center -->
+  <path d="M256 146 L338 182 V258 C338 312 302 350 256 372 C210 350 174 312 174 258 V182 Z" fill="#0f172a" stroke="url(#cyanGlow)" stroke-width="9" />
+
+  <!-- Bold ZS Monogram -->
+  <text x="256" y="274" text-anchor="middle" font-family="sans-serif" font-weight="900" font-size="108" letter-spacing="-4" fill="url(#accent)">ZS</text>
+  <text x="256" y="322" text-anchor="middle" font-family="sans-serif" font-weight="800" font-size="28" letter-spacing="6" fill="#38bdf8">3D RPG</text>
+</svg>
