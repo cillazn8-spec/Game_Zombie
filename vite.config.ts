@@ -7,11 +7,16 @@ import {VitePWA} from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
   return {
+    build: {
+      target: 'es2019',
+      cssTarget: 'chrome80',
+    },
     plugins: [
       react(),
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
+        injectRegister: false,
         includeAssets: [
           'icon.svg',
           'apple-touch-icon.png',

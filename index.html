@@ -25,6 +25,21 @@
   </head>
   <body class="bg-[#07090d] text-slate-100 overflow-hidden select-none">
     <div id="root"></div>
+    <script>
+      window.addEventListener('error', function (ev) {
+        var root = document.getElementById('root');
+        if (root && !root.hasChildNodes()) {
+          root.innerHTML =
+            '<div style="display:flex;align-items:center;justify-content:center;height:100vh;padding:24px;background:#07090d;color:#f8fafc;font-family:sans-serif;text-align:center;">' +
+            '<div style="max-width:420px;background:#0b101b;border:1px solid rgba(251,191,36,0.4);border-radius:12px;padding:20px;">' +
+            '<h2 style="margin:0 0 8px;color:#fbbf24;font-size:18px;">WebView Emulator Perlu Diperbarui</h2>' +
+            '<p style="margin:0 0 12px;font-size:13px;color:#cbd5e1;line-height:1.5;">Game gagal dimuat pada Android WebView emulator ini. Aktifkan OpenGL di pengaturan emulator atau perbarui Android System WebView.</p>' +
+            '<pre style="text-align:left;font-size:11px;color:#fca5a5;background:#020617;padding:8px;border-radius:6px;overflow:auto;">' +
+            String(ev && ev.message ? ev.message : 'Script boot error') +
+            '</pre></div></div>';
+        }
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -1,7 +1,10 @@
 package com.zombiesurvival.laststand;
 
+import android.graphics.Color;
 import android.os.Bundle;
 import android.view.WindowManager;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -12,6 +15,7 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        configureGameWebView();
         enableImmersiveFullscreen();
     }
 
@@ -21,6 +25,17 @@ public class MainActivity extends BridgeActivity {
         if (hasFocus) {
             enableImmersiveFullscreen();
         }
+    }
+
+    private void configureGameWebView() {
+        if (getBridge() == null) return;
+        WebView webView = getBridge().getWebView();
+        if (webView == null) return;
+        webView.setBackgroundColor(Color.parseColor("#07090d"));
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
     }
 
     private void enableImmersiveFullscreen() {

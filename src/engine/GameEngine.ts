@@ -257,6 +257,8 @@ export class GameEngine {
   private camera: THREE.PerspectiveCamera;
   private composer: EffectComposer | null = null;
   private bloomPass: UnrealBloomPass | null = null;
+  private isCapacitorNative: boolean;
+  private isAndroidMobile: boolean;
   private isSoftwareGl: boolean;
   private textures: CityTextures;
   private city: BuiltCity;
@@ -472,6 +474,8 @@ export class GameEngine {
   private touchRunHeld = false;
   private joyX = 0;
   private joyY = 0;
+  private aimStickX = 0;
+  private aimStickY = 0;
   private pointerLocked = false;
   private isDraggingLook = false;
   private lastMouseX = 0;
@@ -651,20 +655,46 @@ export class GameEngine {
       },
     });
 
+    this.isCapacitorNative =
+      typeof (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor
+        ?.isNativePlatform === 'function' &&
+      Boolean(
+        (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor
+          ?.isNativePlatform?.(),
+      );
+    this.isAndroidMobile = /Android|Mobile/i.test(navigator.userAgent || '');
+
     this.isSoftwareGl = (() => {
-      const probe = document.createElement('canvas').getContext('webgl2');
-      if (!probe) return true;
-      const ext = probe.getExtension('WEBGL_debug_renderer_info');
-      const param = ext ? ext.UNMASKED_RENDERER_WEBGL : probe.RENDERER;
-      const gpu = String(probe.getParameter(param));
-      probe.getExtension('WEBGL_lose_context')?.loseContext();
-      return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
+      try {
+        const probeCanvas = document.createElement('canvas');
+        const probe = probeCanvas.getContext('webgl2') || probeCanvas.getContext('webgl');
+        if (!probe) return true;
+        const ext = probe.getExtension('WEBGL_debug_renderer_info');
+        const param = ext ? ext.UNMASKED_RENDERER_WEBGL : probe.RENDERER;
+        const gpu = String(probe.getParameter(param) || '');
+        probe.getExtension('WEBGL_lose_context')?.loseContext();
+        return /SwiftShader|llvmpipe|softpipe|Software|Basic Render|Goldfish|Ranchu|VirGL|Android Emulator|Subzero|Emulator/i.test(
+          gpu,
+        );
+      } catch {
+        return true;
+      }
     })();
 
-    this.renderer = new THREE.WebGLRenderer({
-      antialias: !this.isSoftwareGl && this.settings.quality !== 'low',
-      powerPreference: 'high-performance',
-    });
+    const useSimpleWebGl = this.isSoftwareGl || this.isCapacitorNative;
+    try {
+      this.renderer = new THREE.WebGLRenderer({
+        antialias: !useSimpleWebGl && this.settings.quality !== 'low',
+        powerPreference: useSimpleWebGl ? 'default' : 'high-performance',
+        alpha: false,
+      });
+    } catch {
+      this.renderer = new THREE.WebGLRenderer({
+        antialias: false,
+        powerPreference: 'default',
+        alpha: false,
+      });
+    }
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.16;
@@ -694,18 +724,32 @@ export class GameEngine {
     this.camera = new THREE.PerspectiveCamera(65, w / h, 0.08, 380);
     this.scene.add(this.camera);
 
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.85;
-    pmrem.dispose();
+    // Environment PMREM can fail on older Android Emulator GLES drivers; guard cleanly
+    if (!this.isSoftwareGl) {
+      try {
+        const pmrem = new THREE.PMREMGenerator(this.renderer);
+        this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        this.scene.environmentIntensity = 0.85;
+        pmrem.dispose();
+      } catch {
+        this.scene.environment = null;
+      }
+    }
 
-    this.hemiLight = new THREE.HemisphereLight(mapSpec.skyTopColor, mapSpec.skyBottomColor, 0.98);
+    this.hemiLight = new THREE.HemisphereLight(
+      mapSpec.skyTopColor,
+      mapSpec.skyBottomColor,
+      this.isSoftwareGl ? 1.25 : 0.98,
+    );
     this.scene.add(this.hemiLight);
 
     this.moonLight = new THREE.DirectionalLight(mapSpec.moonColor, 1.92);
     this.moonLight.position.set(22, 34, 18);
     this.moonLight.castShadow = !this.isSoftwareGl && this.settings.quality !== 'low';
-    const initialShadowSize = this.settings.quality === 'high' ? 2048 : 1024;
+    const initialShadowSize =
+      this.settings.quality === 'high' && !this.isCapacitorNative && !this.isAndroidMobile
+        ? 2048
+        : 1024;
     this.moonLight.shadow.mapSize.set(initialShadowSize, initialShadowSize);
     this.moonLight.shadow.camera.near = 2;
     this.moonLight.shadow.camera.far = 95;
@@ -723,16 +767,21 @@ export class GameEngine {
     this.rimLight.position.set(-24, 16, -24);
     this.scene.add(this.rimLight);
 
-    // HD Post-Processing Pipeline (GPU only, safely disabled on software WebGL)
-    if (!this.isSoftwareGl) {
-      this.composer = new EffectComposer(this.renderer);
-      this.composer.setPixelRatio(this.renderer.getPixelRatio());
-      this.composer.setSize(w, h);
-      this.composer.addPass(new RenderPass(this.scene, this.camera));
-      this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.34, 0.45, 0.86);
-      this.bloomPass.enabled = this.settings.quality === 'high';
-      this.composer.addPass(this.bloomPass);
-      this.composer.addPass(new OutputPass());
+    // HD Post-Processing Pipeline (Desktop GPU only; bypass on Android APK/Mobile/Emulators to prevent black FBO)
+    if (!this.isSoftwareGl && !this.isCapacitorNative && !this.isAndroidMobile) {
+      try {
+        this.composer = new EffectComposer(this.renderer);
+        this.composer.setPixelRatio(this.renderer.getPixelRatio());
+        this.composer.setSize(w, h);
+        this.composer.addPass(new RenderPass(this.scene, this.camera));
+        this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.34, 0.45, 0.86);
+        this.bloomPass.enabled = this.settings.quality === 'high';
+        this.composer.addPass(this.bloomPass);
+        this.composer.addPass(new OutputPass());
+      } catch {
+        this.composer = null;
+        this.bloomPass = null;
+      }
     }
 
     // Tactical Weapon Flashlight
@@ -818,8 +867,12 @@ export class GameEngine {
     this.shockwaveGeo.rotateX(-Math.PI / 2);
     this.spawnMenuShowcaseZombies();
 
-    if (!this.isSoftwareGl) {
-      this.renderer.compile(this.scene, this.camera);
+    if (!this.isSoftwareGl && !this.isCapacitorNative) {
+      try {
+        this.renderer.compile(this.scene, this.camera);
+      } catch {
+        // Ignore precompile errors on mobile WebGL drivers
+      }
     }
 
     this.bindEvents();
@@ -828,15 +881,23 @@ export class GameEngine {
   }
 
   private applyQualitySettings(): void {
+    const maxMobileCap = this.isCapacitorNative || this.isAndroidMobile ? 1.5 : 2.0;
     const cap =
-      this.settings.quality === 'high' ? 2.0 : this.settings.quality === 'medium' ? 1.35 : 1.0;
+      this.settings.quality === 'high'
+        ? maxMobileCap
+        : this.settings.quality === 'medium'
+          ? 1.25
+          : 1.0;
     const pixelRatio = this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, cap);
     this.renderer.setPixelRatio(pixelRatio);
     this.renderer.shadowMap.enabled = !this.isSoftwareGl && this.settings.quality !== 'low';
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     if (this.moonLight) {
       this.moonLight.castShadow = !this.isSoftwareGl && this.settings.quality !== 'low';
-      const targetSize = this.settings.quality === 'high' ? 2048 : 1024;
+      const targetSize =
+        this.settings.quality === 'high' && !this.isCapacitorNative && !this.isAndroidMobile
+          ? 2048
+          : 1024;
       if (this.moonLight.shadow.mapSize.width !== targetSize) {
         this.moonLight.shadow.mapSize.set(targetSize, targetSize);
         this.moonLight.shadow.map?.dispose();
@@ -850,7 +911,11 @@ export class GameEngine {
       this.composer.setSize(w, h);
     }
     if (this.bloomPass) {
-      this.bloomPass.enabled = !this.isSoftwareGl && this.settings.quality === 'high';
+      this.bloomPass.enabled =
+        !this.isSoftwareGl &&
+        !this.isCapacitorNative &&
+        !this.isAndroidMobile &&
+        this.settings.quality === 'high';
     }
   }
 
@@ -1851,10 +1916,15 @@ export class GameEngine {
     this.joyY = THREE.MathUtils.clamp(y, -1, 1);
   }
 
+  public setAimStick(x: number, y: number): void {
+    this.aimStickX = THREE.MathUtils.clamp(x, -1, 1);
+    this.aimStickY = THREE.MathUtils.clamp(y, -1, 1);
+  }
+
   public addTouchLook(deltaX: number, deltaY: number): void {
     if (this.phase !== 'playing') return;
     const aimSlowdown = this.isAiming ? 0.6 : 1.0;
-    const sens = 0.0042 * this.settings.sensitivity * aimSlowdown;
+    const sens = 0.0044 * this.settings.sensitivity * aimSlowdown;
     this.camYaw -= deltaX * sens;
     this.camPitch = THREE.MathUtils.clamp(this.camPitch + deltaY * sens, -0.68, 0.72);
     this.fpsLookSwayX = THREE.MathUtils.clamp(this.fpsLookSwayX - deltaX * 0.00055, -0.045, 0.045);
@@ -1863,7 +1933,15 @@ export class GameEngine {
 
   public setTouchShoot(active: boolean): void {
     this.touchShootHeld = active;
-    if (active) this.audio.unlock();
+    if (active) {
+      this.audio.unlock();
+      if (this.phase === 'playing' && !this.spectatingDowned && !this.activeVehicleId) {
+        this.tryShoot();
+      }
+    } else {
+      this.aimStickX = 0;
+      this.aimStickY = 0;
+    }
   }
 
   public setTouchRun(active: boolean): void {
@@ -4646,6 +4724,27 @@ export class GameEngine {
       }
     }
 
+    // Rotate 3D camera continuously in exact direction of Right Shoot / Aim Analog
+    const aimMag = Math.hypot(this.aimStickX, this.aimStickY);
+    if (aimMag > 0.07) {
+      const aimSlowdown = this.isAiming ? 0.56 : 1.0;
+      const sens = this.settings.sensitivity * aimSlowdown;
+      const curvedX =
+        Math.sign(this.aimStickX) *
+        (0.38 * Math.abs(this.aimStickX) + 0.62 * this.aimStickX * this.aimStickX);
+      const curvedY =
+        Math.sign(this.aimStickY) *
+        (0.38 * Math.abs(this.aimStickY) + 0.62 * this.aimStickY * this.aimStickY);
+      this.camYaw -= curvedX * 2.95 * sens * dt;
+      this.camPitch = THREE.MathUtils.clamp(
+        this.camPitch + curvedY * 1.75 * sens * dt,
+        -0.68,
+        0.72,
+      );
+      this.fpsLookSwayX = THREE.MathUtils.clamp(this.fpsLookSwayX - curvedX * 0.012, -0.045, 0.045);
+      this.fpsLookSwayY = THREE.MathUtils.clamp(this.fpsLookSwayY + curvedY * 0.01, -0.035, 0.035);
+    }
+
     if ((this.mouseDown || this.touchShootHeld) && !this.spectatingDowned) {
       this.tryShoot();
     }
@@ -4699,12 +4798,14 @@ export class GameEngine {
 
       const inputLen = Math.hypot(moveForward, moveRight);
       isMoving = inputLen > 0.05;
+      const autoJoySprint = Math.hypot(this.joyX, this.joyY) > 0.88 && this.joyY < -0.5;
       const wantsRun =
         Boolean(
           this.keys['ShiftLeft'] ||
             this.keys['ShiftRight'] ||
             this.touchRunHeld ||
-            this.runToggleActive,
+            this.runToggleActive ||
+            autoJoySprint,
         ) &&
         isMoving &&
         !this.isCrouching;
@@ -6334,6 +6435,8 @@ export class GameEngine {
     )
       return;
     if (e.target !== this.renderer.domElement) return;
+    // In mobile touch mode, let TouchControls handle touch/drag camera & fire cleanly
+    if (this.settings.controlMode === 'touch') return;
     this.audio.unlock();
 
     if (e.button === 0) {
@@ -6424,26 +6527,43 @@ export class GameEngine {
   }
 
   private afterDraw(cb: () => void): void {
-    const gl = this.renderer.getContext() as WebGL2RenderingContext;
-    const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-    gl.flush();
+    const gl = this.renderer.getContext() as WebGL2RenderingContext | null;
+    if (!gl || typeof gl.fenceSync !== 'function') {
+      this.frameId = window.setTimeout(cb, 33);
+      return;
+    }
+    let sync: WebGLSync | null = null;
+    try {
+      sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+      gl.flush();
+    } catch {
+      this.frameId = window.setTimeout(cb, 33);
+      return;
+    }
+    if (!sync) {
+      this.frameId = window.setTimeout(cb, 33);
+      return;
+    }
+    let checks = 0;
     const poll = () => {
       if (this.disposed) {
         if (sync) gl.deleteSync(sync);
         return;
       }
+      checks++;
       const state = sync && gl.getSyncParameter(sync, gl.SYNC_STATUS);
-      if (state === gl.UNSIGNALED) {
+      if (state === gl.UNSIGNALED && checks < 40) {
         this.frameId = window.setTimeout(poll, 5);
       } else {
         if (sync) gl.deleteSync(sync);
-        this.frameId = window.setTimeout(cb, 80);
+        this.frameId = window.setTimeout(cb, 60);
       }
     };
     this.frameId = window.setTimeout(poll, 5);
   }
 
   private startLoop(): void {
+    const useFenceThrottle = this.isSoftwareGl && !this.isCapacitorNative;
     const tick = () => {
       if (this.disposed) return;
       const now = performance.now();
@@ -6452,16 +6572,22 @@ export class GameEngine {
 
       this.update(dt, now / 1000);
       if (!this.isSoftwareGl && this.settings.quality === 'high' && this.composer) {
-        this.composer.render();
+        try {
+          this.composer.render();
+        } catch {
+          this.composer = null;
+          this.bloomPass = null;
+          this.renderer.render(this.scene, this.camera);
+        }
       } else {
         this.renderer.render(this.scene, this.camera);
       }
 
-      if (this.isSoftwareGl) this.afterDraw(tick);
+      if (useFenceThrottle) this.afterDraw(tick);
       else this.frameId = requestAnimationFrame(tick);
     };
 
-    if (this.isSoftwareGl) this.afterDraw(tick);
+    if (useFenceThrottle) this.afterDraw(tick);
     else this.frameId = requestAnimationFrame(tick);
   }
 

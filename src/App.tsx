@@ -50,6 +50,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showMultiplayer, setShowMultiplayer] = useState(false);
   const [contextLost, setContextLost] = useState(false);
+  const [engineError, setEngineError] = useState<string | null>(null);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
 
   useEffect(() => {
@@ -69,22 +70,28 @@ export default function App() {
     const mountEl = canvasMountRef.current;
     if (!mountEl) return;
 
-    const engine = new GameEngine(
-      mountEl,
-      settings,
-      (nextHud) => setHud(nextHud),
-      (nextLobby) => {
-        setLobby(nextLobby);
-        if (nextLobby.started) {
-          setShowMultiplayer(false);
-        }
-      },
-      () => setContextLost(true),
-    );
-    engineRef.current = engine;
+    let engine: GameEngine | null = null;
+    try {
+      engine = new GameEngine(
+        mountEl,
+        settings,
+        (nextHud) => setHud(nextHud),
+        (nextLobby) => {
+          setLobby(nextLobby);
+          if (nextLobby.started) {
+            setShowMultiplayer(false);
+          }
+        },
+        () => setContextLost(true),
+      );
+      engineRef.current = engine;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setEngineError(msg || 'Gagal membuat konteks grafis WebGL.');
+    }
 
     return () => {
-      engine.dispose();
+      engine?.dispose();
       engineRef.current = null;
     };
     // Mount WebGL scene once; settings updates sync via updateSettings() below
@@ -135,16 +142,23 @@ export default function App() {
       {/* Isolated WebGL Mount Container */}
       <div ref={canvasMountRef} className="absolute inset-0 w-full h-full" />
 
-      {/* WebGL Context Lost Graceful Fallback */}
-      {contextLost && (
+      {/* WebGL Context Lost / Init Error Graceful Fallback */}
+      {(contextLost || engineError) && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#07090d] p-6 text-center">
-          <div className="max-w-sm bg-[#0b101b] border border-white/15 rounded-xl p-6">
-            <h2 className="font-display text-xl font-bold text-white mb-2">
-              Koneksi Grafis WebGL Terputus
+          <div className="max-w-md bg-[#0b101b] border border-amber-400/35 rounded-xl p-6 space-y-3">
+            <h2 className="font-display text-xl font-bold text-amber-400">
+              {engineError ? 'Grafis 3D WebGL Tidak Tersedia' : 'Koneksi Grafis WebGL Terputus'}
             </h2>
-            <p className="text-sm text-slate-300 mb-4">
-              Silakan muat ulang halaman untuk memulihkan tampilan 3D.
+            <p className="text-xs text-slate-300 leading-relaxed">
+              {engineError
+                ? 'Emulator/HP Android ini gagal menginisialisasi WebGL 3D. Di Emulator Android (BlueStacks/LDPlayer/Nox/AVD), aktifkan Graphics Mode: OpenGL + Hardware Acceleration dan perbarui Android System WebView.'
+                : 'Silakan muat ulang halaman untuk memulihkan tampilan 3D.'}
             </p>
+            {engineError && (
+              <pre className="text-[10px] text-left text-red-300 bg-slate-950 p-2 rounded border border-white/10 overflow-x-auto max-h-24">
+                {engineError}
+              </pre>
+            )}
             <button
               type="button"
               onClick={() => window.location.reload()}
@@ -239,6 +253,7 @@ export default function App() {
           isAmmoLow={hud.isAmmoLow}
           ammoRefillCooldownRatio={hud.ammoRefillCooldownRatio}
           onJoystickMove={(x, y) => engineRef.current?.setTouchJoystick(x, y)}
+          onAimStickMove={(x, y) => engineRef.current?.setAimStick(x, y)}
           onLookDrag={(dx, dy) => engineRef.current?.addTouchLook(dx, dy)}
           onShootChange={(active) => engineRef.current?.setTouchShoot(active)}
           onReload={() => engineRef.current?.triggerReload()}

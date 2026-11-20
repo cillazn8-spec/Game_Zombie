@@ -2378,7 +2378,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   sfxVolume: 0.75,
   musicVolume: 0.45,
   sensitivity: 1.0,
-  controlMode: 'auto',
+  controlMode: 'touch',
   selectedMap: 'openworld',
   autoRotateMaps: false,
   selectedDifficulty: 'normal',

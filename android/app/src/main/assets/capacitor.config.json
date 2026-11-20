@@ -8,8 +8,8 @@
 	},
 	"android": {
 		"backgroundColor": "#07090d",
-		"allowMixedContent": false,
+		"allowMixedContent": true,
 		"captureInput": true,
-		"webContentsDebuggingEnabled": false
+		"webContentsDebuggingEnabled": true
 	}
 }
